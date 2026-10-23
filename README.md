@@ -39,6 +39,43 @@ Start with `-read-only` (or `BITBUCKET_READ_ONLY=true`) to expose only the read 
 
 ## Install
 
+### With mise
+
+[mise](https://mise.jdx.dev) can build and install the server through its `go:` backend. It needs Go 1.27 or newer, which mise can also provide:
+
+```sh
+mise use -g go@1.27
+mise use -g go:github.com/cornelius-99/bitbucket-mcp/cmd/bitbucket-mcp@latest
+```
+
+This puts `bitbucket-mcp` on your PATH through mise's shims (or `mise activate`). You can pin a version per project instead by running the second command without `-g` in that project, which writes it to `mise.toml`:
+
+```toml
+[tools]
+"go:github.com/cornelius-99/bitbucket-mcp/cmd/bitbucket-mcp" = "latest"
+```
+
+If your MCP client does not see mise's PATH, point it at the binary with `mise exec`:
+
+```json
+{
+  "mcpServers": {
+    "bitbucket": {
+      "command": "mise",
+      "args": ["exec", "go:github.com/cornelius-99/bitbucket-mcp/cmd/bitbucket-mcp@latest", "--", "bitbucket-mcp"],
+      "env": {
+        "BITBUCKET_URL": "https://bitbucket.example.com",
+        "BITBUCKET_TOKEN": "..."
+      }
+    }
+  }
+}
+```
+
+Upgrade with `mise upgrade go:github.com/cornelius-99/bitbucket-mcp/cmd/bitbucket-mcp`.
+
+### With Go
+
 ```sh
 go install github.com/cornelius-99/bitbucket-mcp/cmd/bitbucket-mcp@latest
 ```

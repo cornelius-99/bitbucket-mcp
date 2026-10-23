@@ -1,6 +1,6 @@
 module github.com/cornelius-99/bitbucket-mcp
 
-go 1.25.0
+go 1.27
 
 tool github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen
 

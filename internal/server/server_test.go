@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"slices"
@@ -106,9 +107,7 @@ const prPath = "/rest/api/latest/projects/PRJ/repos/repo/pull-requests/7"
 
 func prArgs(extra map[string]any) map[string]any {
 	m := map[string]any{"project_key": "PRJ", "repository_slug": "repo", "pull_request_id": 7}
-	for k, v := range extra {
-		m[k] = v
-	}
+	maps.Copy(m, extra)
 	return m
 }
 
