@@ -160,3 +160,7 @@ main.go                         entry point
 | `make build` | Build `bin/bitbucket-mcp` |
 
 To target another Bitbucket version: `make regenerate SPEC_VERSION=8.19`.
+
+### Releasing
+
+Run the **Release** workflow from the Actions tab with a version such as `v0.1.2` (or `gh workflow run release.yml -f version=v0.1.2`). It runs the tests on `main`, creates the tag and a GitHub Release with generated notes. `go install` and mise pick up the new version from the Go module proxy.
