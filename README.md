@@ -111,6 +111,29 @@ Generic MCP client config:
 }
 ```
 
+### opencode
+
+Add the server under `mcp` in your [opencode](https://opencode.ai) config. That is `~/.config/opencode/opencode.json` for all projects, or `opencode.json` in a project root for one project. `{env:...}` reads the value from your shell environment, so the token stays out of the file:
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "bitbucket": {
+      "type": "local",
+      "command": ["bitbucket-mcp"],
+      "enabled": true,
+      "environment": {
+        "BITBUCKET_URL": "https://bitbucket.example.com",
+        "BITBUCKET_TOKEN": "{env:BITBUCKET_TOKEN}"
+      }
+    }
+  }
+}
+```
+
+Run `opencode mcp list` to check that the server connects.
+
 ### Streamable HTTP
 
 ```sh
