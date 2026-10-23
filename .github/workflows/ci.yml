@@ -1,0 +1,23 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Check generated client is up to date
+        run: |
+          make generate
+          git diff --exit-code
+      - name: Check formatting
+        run: test -z "$(gofmt -l cmd internal)"
+      - run: make test
+      - run: make build
