@@ -1,0 +1,3 @@
+/bin/
+# The full upstream spec is downloaded by `make spec`; only the filtered spec is committed.
+/api/bitbucket.swagger.v3.json
