@@ -101,11 +101,9 @@ func (t *tools) resolveVersion(ctx context.Context, a PRArgs, v *int32) (int32, 
 	return t.currentVersion(ctx, a)
 }
 
-func boolPtr(b bool) *bool { return &b }
-
 // register adds all tools to s. Write tools are skipped when readOnly is set.
 func (t *tools) register(s *mcp.Server, readOnly bool) {
-	read := &mcp.ToolAnnotations{ReadOnlyHint: true, OpenWorldHint: boolPtr(true)}
+	read := &mcp.ToolAnnotations{ReadOnlyHint: true, OpenWorldHint: new(true)}
 
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "list_pull_requests",
@@ -159,9 +157,9 @@ func (t *tools) register(s *mcp.Server, readOnly bool) {
 		return
 	}
 
-	write := &mcp.ToolAnnotations{OpenWorldHint: boolPtr(true), DestructiveHint: boolPtr(false)}
-	idempotent := &mcp.ToolAnnotations{OpenWorldHint: boolPtr(true), DestructiveHint: boolPtr(false), IdempotentHint: true}
-	destructive := &mcp.ToolAnnotations{OpenWorldHint: boolPtr(true), DestructiveHint: boolPtr(true)}
+	write := &mcp.ToolAnnotations{OpenWorldHint: new(true), DestructiveHint: new(false)}
+	idempotent := &mcp.ToolAnnotations{OpenWorldHint: new(true), DestructiveHint: new(false), IdempotentHint: true}
+	destructive := &mcp.ToolAnnotations{OpenWorldHint: new(true), DestructiveHint: new(true)}
 
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "create_pull_request",
