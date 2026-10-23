@@ -13,7 +13,7 @@ all: generate build test
 
 ## build: compile ./bin/bitbucket-mcp
 build:
-	go build -ldflags "-X main.version=$(VERSION)" -o bin/bitbucket-mcp ./cmd/bitbucket-mcp
+	go build -ldflags "-X main.version=$(VERSION)" -o bin/bitbucket-mcp .
 
 test:
 	go vet ./...
