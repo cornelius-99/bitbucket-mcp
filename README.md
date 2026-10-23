@@ -160,8 +160,6 @@ main.go                         entry point
 
 To target another Bitbucket version: `make generate SPEC_VERSION=8.19`.
 
-The **Regenerate client** workflow (Actions tab, input `spec_version`) does the same on GitHub and opens a PR when the generated client changes.
-
 ### Releasing
 
 Run the **Release** workflow from the Actions tab with a version such as `v0.1.2` (or `gh workflow run release.yml -f version=v0.1.2`). It runs the tests on `main`, creates the tag and a GitHub Release with generated notes. `go install` and mise pick up the new version from the Go module proxy.
