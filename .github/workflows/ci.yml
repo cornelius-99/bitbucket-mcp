@@ -13,10 +13,6 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-      - name: Check generated client is up to date
-        run: |
-          make generate
-          git diff --exit-code
       - name: Check formatting
         run: test -z "$(gofmt -l *.go internal)"
       - run: make test

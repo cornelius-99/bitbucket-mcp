@@ -145,21 +145,20 @@ The HTTP endpoint has no authentication of its own and acts with the configured 
 ## Development
 
 ```
-api/pullrequests.openapi.json   filtered spec (committed)
+api/                            Atlassian's spec, downloaded by `make generate` (not committed)
 internal/tools/specfilter       keeps /api/latest/**/pull-requests* paths, prunes unused schemas
-internal/bitbucket              oapi-codegen config + generated client (client.gen.go)
+internal/bitbucket              oapi-codegen config + generated client (client.gen.go, committed)
 internal/server                 MCP tools on top of the generated client
 main.go                         entry point
 ```
 
 | Command | |
 | --- | --- |
-| `make regenerate` | Download the official spec (`SPEC_VERSION`, default 9.4), filter it, regenerate the client |
-| `make generate` | Regenerate the client from the committed filtered spec |
+| `make generate` | Download the official spec (`SPEC_VERSION`, default 9.4), filter it to the pull request API and regenerate the client |
 | `make test` | `go vet` and `go test` |
 | `make build` | Build `bin/bitbucket-mcp` |
 
-To target another Bitbucket version: `make regenerate SPEC_VERSION=8.19`.
+To target another Bitbucket version: `make generate SPEC_VERSION=8.19`.
 
 ### Releasing
 
@@ -167,4 +166,6 @@ Run the **Release** workflow from the Actions tab with a version such as `v0.1.2
 
 ## License
 
-[MIT](LICENSE)
+The code in this repository is licensed under [MIT](LICENSE).
+
+The Bitbucket REST API definitions (the OpenAPI spec) belong to Atlassian. They are not part of this repository and are not covered by the MIT license: `make generate` downloads them from [Atlassian's developer site](https://developer.atlassian.com/server/bitbucket/rest/) when the client is regenerated.
