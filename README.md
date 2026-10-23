@@ -45,14 +45,14 @@ Start with `-read-only` (or `BITBUCKET_READ_ONLY=true`) to expose only the read 
 
 ```sh
 mise use -g go@1.27
-mise use -g go:github.com/cornelius-99/bitbucket-mcp/cmd/bitbucket-mcp@latest
+mise use -g go:github.com/cornelius-99/bitbucket-mcp@latest
 ```
 
 This puts `bitbucket-mcp` on your PATH through mise's shims (or `mise activate`). You can pin a version per project instead by running the second command without `-g` in that project, which writes it to `mise.toml`:
 
 ```toml
 [tools]
-"go:github.com/cornelius-99/bitbucket-mcp/cmd/bitbucket-mcp" = "latest"
+"go:github.com/cornelius-99/bitbucket-mcp" = "latest"
 ```
 
 If your MCP client does not see mise's PATH, point it at the binary with `mise exec`:
@@ -62,7 +62,7 @@ If your MCP client does not see mise's PATH, point it at the binary with `mise e
   "mcpServers": {
     "bitbucket": {
       "command": "mise",
-      "args": ["exec", "go:github.com/cornelius-99/bitbucket-mcp/cmd/bitbucket-mcp@latest", "--", "bitbucket-mcp"],
+      "args": ["exec", "go:github.com/cornelius-99/bitbucket-mcp@latest", "--", "bitbucket-mcp"],
       "env": {
         "BITBUCKET_URL": "https://bitbucket.example.com",
         "BITBUCKET_TOKEN": "..."
@@ -72,12 +72,12 @@ If your MCP client does not see mise's PATH, point it at the binary with `mise e
 }
 ```
 
-Upgrade with `mise upgrade go:github.com/cornelius-99/bitbucket-mcp/cmd/bitbucket-mcp`.
+Upgrade with `mise upgrade go:github.com/cornelius-99/bitbucket-mcp`.
 
 ### With Go
 
 ```sh
-go install github.com/cornelius-99/bitbucket-mcp/cmd/bitbucket-mcp@latest
+go install github.com/cornelius-99/bitbucket-mcp@latest
 ```
 
 or `make build`, which writes `bin/bitbucket-mcp`.
@@ -149,7 +149,7 @@ api/pullrequests.openapi.json   filtered spec (committed)
 internal/tools/specfilter       keeps /api/latest/**/pull-requests* paths, prunes unused schemas
 internal/bitbucket              oapi-codegen config + generated client (client.gen.go)
 internal/server                 MCP tools on top of the generated client
-cmd/bitbucket-mcp               entry point
+main.go                         entry point
 ```
 
 | Command | |

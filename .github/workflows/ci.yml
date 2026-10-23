@@ -18,6 +18,6 @@ jobs:
           make generate
           git diff --exit-code
       - name: Check formatting
-        run: test -z "$(gofmt -l cmd internal)"
+        run: test -z "$(gofmt -l main.go internal)"
       - run: make test
       - run: make build
