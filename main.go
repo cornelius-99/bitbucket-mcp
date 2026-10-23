@@ -18,6 +18,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"runtime/debug"
 	"strconv"
 	"syscall"
 
@@ -26,10 +27,14 @@ import (
 	"github.com/cornelius-99/bitbucket-mcp/internal/server"
 )
 
-// version is set at build time with -ldflags "-X main.version=...".
-var version = "dev"
+// version can be set at build time with -ldflags "-X main.version=...".
+// Otherwise it is taken from the module version embedded by the Go toolchain,
+// which is what `go install ...@v0.1.0` (and mise's go: backend) provides.
+var version = ""
 
 func main() {
+	version = resolveVersion(version)
+
 	httpAddr := flag.String("http", "", "serve streamable HTTP on this address (e.g. :8080) instead of stdio")
 	readOnly := flag.Bool("read-only", envBool("BITBUCKET_READ_ONLY"), "only register tools that do not modify Bitbucket (env BITBUCKET_READ_ONLY)")
 	showVersion := flag.Bool("version", false, "print the version and exit")
@@ -71,6 +76,18 @@ func main() {
 	if err := httpSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.Fatal(err)
 	}
+}
+
+// resolveVersion returns the ldflags version if set, else the main module
+// version from the build info, else "dev".
+func resolveVersion(ldflags string) string {
+	if ldflags != "" {
+		return ldflags
+	}
+	if info, ok := debug.ReadBuildInfo(); ok && info.Main.Version != "" && info.Main.Version != "(devel)" {
+		return info.Main.Version
+	}
+	return "dev"
 }
 
 func envBool(key string) bool {
