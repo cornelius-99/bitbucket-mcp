@@ -29,6 +29,10 @@ An [MCP](https://modelcontextprotocol.io) server for the **Bitbucket Data Center
 Tools that take a `version` use the PR's current version when it is omitted.
 Start with `-read-only` (or `BITBUCKET_READ_ONLY=true`) to expose only the read tools.
 
+### Output
+
+Bitbucket's raw JSON repeats full user, repository and project objects (with links) on every item, so the tools return compact summaries instead: users as `slug (Display Name)`, refs as branch plus commit, times as RFC 3339, and no links, emails or clone URLs. List results leave out PR descriptions; `get_pull_request` has them. This cuts typical responses by about 65–85% (one page of 25 PRs drops from roughly 28k to 5k tokens). Pass `raw: true` to any read tool to get Bitbucket's unmodified JSON.
+
 ## Configuration
 
 | Variable | Required | Description |
