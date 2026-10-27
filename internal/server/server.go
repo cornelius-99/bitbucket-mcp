@@ -18,7 +18,9 @@ type Options struct {
 const instructions = `Tools for pull requests on a Bitbucket Data Center / Server instance.
 Repositories are addressed by project_key and repository_slug, as in the URL
 https://<host>/projects/<project_key>/repos/<repository_slug>. List results are
-paged: pass nextPageStart as start to get the next page while isLastPage is false.`
+paged: pass nextPageStart as start to get the next page while isLastPage is false.
+Results are compact summaries: users are "slug (Display Name)" and times are
+RFC 3339. Read tools accept raw: true to return Bitbucket's full JSON instead.`
 
 // New returns an MCP server whose tools call Bitbucket through c.
 func New(c *bitbucket.Client, opts Options) *mcp.Server {

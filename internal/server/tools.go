@@ -107,13 +107,13 @@ func (t *tools) register(s *mcp.Server, readOnly bool) {
 
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "list_pull_requests",
-		Description: "List pull requests in a repository. Returns a Bitbucket page (values, isLastPage, nextPageStart).",
+		Description: "List pull requests in a repository. Returns a page (values, isLastPage, nextPageStart) of PR summaries without descriptions; use get_pull_request for the full PR.",
 		Annotations: read,
 	}, t.listPullRequests)
 
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "list_my_pull_requests",
-		Description: "List pull requests across all repositories that involve the authenticated user (the Bitbucket dashboard).",
+		Description: "List pull requests across all repositories that involve the authenticated user (the Bitbucket dashboard). Returns PR summaries without descriptions.",
 		Annotations: read,
 	}, t.listMyPullRequests)
 
@@ -221,6 +221,7 @@ func (t *tools) register(s *mcp.Server, readOnly bool) {
 type ListPullRequestsArgs struct {
 	RepoArgs
 	PageArgs
+	RawArgs
 	State      string `json:"state,omitempty" jsonschema:"OPEN (default), DECLINED, MERGED or ALL"`
 	Direction  string `json:"direction,omitempty" jsonschema:"INCOMING (default, PRs targeting this repo) or OUTGOING (PRs from this repo)"`
 	At         string `json:"at,omitempty" jsonschema:"Only PRs to (INCOMING) or from (OUTGOING) this fully qualified ref, e.g. refs/heads/main"`
@@ -243,11 +244,13 @@ func (t *tools) listPullRequests(ctx context.Context, _ *mcp.CallToolRequest, a 
 	if err != nil {
 		return nil, nil, err
 	}
-	return jsonResult(body), nil, nil
+	res, err := compactResult(body, a.Raw, compactPage(toPullRequestSummary))
+	return res, nil, err
 }
 
 type ListMyPullRequestsArgs struct {
 	PageArgs
+	RawArgs
 	Role              string `json:"role,omitempty" jsonschema:"Only PRs where the user has this role: AUTHOR, REVIEWER or PARTICIPANT"`
 	State             string `json:"state,omitempty" jsonschema:"OPEN, DECLINED or MERGED; omit for any state"`
 	ParticipantStatus string `json:"participant_status,omitempty" jsonschema:"Comma separated participant statuses: UNAPPROVED, NEEDS_WORK, APPROVED"`
@@ -266,15 +269,22 @@ func (t *tools) listMyPullRequests(ctx context.Context, _ *mcp.CallToolRequest, 
 	if err != nil {
 		return nil, nil, err
 	}
-	return jsonResult(body), nil, nil
+	res, err := compactResult(body, a.Raw, compactPage(toPullRequestSummary))
+	return res, nil, err
 }
 
-func (t *tools) getPullRequest(ctx context.Context, _ *mcp.CallToolRequest, a PRArgs) (*mcp.CallToolResult, any, error) {
+type GetPullRequestArgs struct {
+	PRArgs
+	RawArgs
+}
+
+func (t *tools) getPullRequest(ctx context.Context, _ *mcp.CallToolRequest, a GetPullRequestArgs) (*mcp.CallToolResult, any, error) {
 	body, err := readBody(t.c.Get3(ctx, a.ProjectKey, a.RepositorySlug, a.id()))
 	if err != nil {
 		return nil, nil, err
 	}
-	return jsonResult(body), nil, nil
+	res, err := compactResult(body, a.Raw, toPullRequest)
+	return res, nil, err
 }
 
 type GetDiffArgs struct {
@@ -301,6 +311,7 @@ func (t *tools) getPullRequestDiff(ctx context.Context, _ *mcp.CallToolRequest, 
 type GetChangesArgs struct {
 	PRArgs
 	PageArgs
+	RawArgs
 	ChangeScope string `json:"change_scope,omitempty" jsonschema:"ALL (default), UNREVIEWED (changes since the user's last review) or RANGE (use since_id and until_id)"`
 	SinceID     string `json:"since_id,omitempty" jsonschema:"With change_scope RANGE: the commit to diff from"`
 	UntilID     string `json:"until_id,omitempty" jsonschema:"With change_scope RANGE: the commit to diff to"`
@@ -317,12 +328,14 @@ func (t *tools) getPullRequestChanges(ctx context.Context, _ *mcp.CallToolReques
 	if err != nil {
 		return nil, nil, err
 	}
-	return jsonResult(body), nil, nil
+	res, err := compactResult(body, a.Raw, compactPage(toChange))
+	return res, nil, err
 }
 
 type PagedPRArgs struct {
 	PRArgs
 	PageArgs
+	RawArgs
 }
 
 func (t *tools) getPullRequestCommits(ctx context.Context, _ *mcp.CallToolRequest, a PagedPRArgs) (*mcp.CallToolResult, any, error) {
@@ -333,7 +346,8 @@ func (t *tools) getPullRequestCommits(ctx context.Context, _ *mcp.CallToolReques
 	if err != nil {
 		return nil, nil, err
 	}
-	return jsonResult(body), nil, nil
+	res, err := compactResult(body, a.Raw, compactPage(toCommit))
+	return res, nil, err
 }
 
 func (t *tools) getPullRequestActivities(ctx context.Context, _ *mcp.CallToolRequest, a PagedPRArgs) (*mcp.CallToolResult, any, error) {
@@ -344,7 +358,8 @@ func (t *tools) getPullRequestActivities(ctx context.Context, _ *mcp.CallToolReq
 	if err != nil {
 		return nil, nil, err
 	}
-	return jsonResult(body), nil, nil
+	res, err := compactResult(body, a.Raw, compactPage(toActivity))
+	return res, nil, err
 }
 
 func (t *tools) getPullRequestMergeStatus(ctx context.Context, _ *mcp.CallToolRequest, a PRArgs) (*mcp.CallToolResult, any, error) {
@@ -433,7 +448,8 @@ func (t *tools) createPullRequest(ctx context.Context, _ *mcp.CallToolRequest, a
 	if err != nil {
 		return nil, nil, err
 	}
-	return jsonResult(body), nil, nil
+	res, err := compactResult(body, false, toPullRequest)
+	return res, nil, err
 }
 
 type UpdatePullRequestArgs struct {
@@ -511,7 +527,8 @@ func (t *tools) updatePullRequest(ctx context.Context, _ *mcp.CallToolRequest, a
 	if err != nil {
 		return nil, nil, err
 	}
-	return jsonResult(body), nil, nil
+	res, err := compactResult(body, false, toPullRequest)
+	return res, nil, err
 }
 
 type AddCommentArgs struct {
@@ -562,7 +579,8 @@ func (t *tools) addPullRequestComment(ctx context.Context, _ *mcp.CallToolReques
 	if err != nil {
 		return nil, nil, err
 	}
-	return jsonResult(body), nil, nil
+	res, err := compactResult(body, false, toComment)
+	return res, nil, err
 }
 
 func (t *tools) approvePullRequest(ctx context.Context, _ *mcp.CallToolRequest, a PRArgs) (*mcp.CallToolResult, any, error) {
@@ -570,7 +588,8 @@ func (t *tools) approvePullRequest(ctx context.Context, _ *mcp.CallToolRequest, 
 	if err != nil {
 		return nil, nil, err
 	}
-	return jsonResult(body), nil, nil
+	res, err := compactResult(body, false, toParticipant)
+	return res, nil, err
 }
 
 func (t *tools) unapprovePullRequest(ctx context.Context, _ *mcp.CallToolRequest, a PRArgs) (*mcp.CallToolResult, any, error) {
@@ -578,7 +597,8 @@ func (t *tools) unapprovePullRequest(ctx context.Context, _ *mcp.CallToolRequest
 	if err != nil {
 		return nil, nil, err
 	}
-	return jsonResult(body), nil, nil
+	res, err := compactResult(body, false, toParticipant)
+	return res, nil, err
 }
 
 type SetReviewStatusArgs struct {
@@ -595,7 +615,8 @@ func (t *tools) setReviewStatus(ctx context.Context, _ *mcp.CallToolRequest, a S
 	if err != nil {
 		return nil, nil, err
 	}
-	return jsonResult(body), nil, nil
+	res, err := compactResult(body, false, toParticipant)
+	return res, nil, err
 }
 
 type DeclineArgs struct {
@@ -615,7 +636,8 @@ func (t *tools) declinePullRequest(ctx context.Context, _ *mcp.CallToolRequest, 
 	if err != nil {
 		return nil, nil, err
 	}
-	return jsonResult(body), nil, nil
+	res, err := compactResult(body, false, toPullRequest)
+	return res, nil, err
 }
 
 type ReopenArgs struct {
@@ -634,7 +656,8 @@ func (t *tools) reopenPullRequest(ctx context.Context, _ *mcp.CallToolRequest, a
 	if err != nil {
 		return nil, nil, err
 	}
-	return jsonResult(body), nil, nil
+	res, err := compactResult(body, false, toPullRequest)
+	return res, nil, err
 }
 
 type MergeArgs struct {
@@ -662,7 +685,8 @@ func (t *tools) mergePullRequest(ctx context.Context, _ *mcp.CallToolRequest, a 
 	if err != nil {
 		return nil, nil, err
 	}
-	return jsonResult(body), nil, nil
+	res, err := compactResult(body, false, toPullRequest)
+	return res, nil, err
 }
 
 // acceptText asks for a plain-text response, used for raw diffs.
