@@ -117,7 +117,7 @@ type bbComment struct {
 }
 
 type bbAnchor struct {
-	Path     string `json:"path"`
+	Path     bbPath `json:"path"`
 	Line     int    `json:"line"`
 	LineType string `json:"lineType"`
 }
@@ -152,8 +152,29 @@ type bbActivity struct {
 	RemovedReviewers []bbUser `json:"removedReviewers"`
 }
 
-type bbPath struct {
-	ToString string `json:"toString"`
+// bbPath is a file path. Bitbucket sends changes' paths as objects and
+// comment anchors' paths as plain strings, while the spec types both as an
+// object, so accept either.
+type bbPath string
+
+func (p *bbPath) UnmarshalJSON(b []byte) error {
+	var s string
+	if err := json.Unmarshal(b, &s); err == nil {
+		*p = bbPath(s)
+		return nil
+	}
+	var o struct {
+		ToString   string   `json:"toString"`
+		Components []string `json:"components"`
+	}
+	if err := json.Unmarshal(b, &o); err != nil {
+		return err
+	}
+	if o.ToString == "" {
+		o.ToString = strings.Join(o.Components, "/")
+	}
+	*p = bbPath(o.ToString)
+	return nil
 }
 
 type bbChange struct {
@@ -370,7 +391,7 @@ func toAnchor(a *bbAnchor) *anchor {
 	if a == nil || a.Path == "" {
 		return nil
 	}
-	return &anchor{Path: a.Path, Line: a.Line, LineType: a.LineType}
+	return &anchor{Path: string(a.Path), Line: a.Line, LineType: a.LineType}
 }
 
 func toComment(c bbComment) comment {
@@ -455,9 +476,9 @@ func toActivity(a bbActivity) activity {
 }
 
 func toChange(c bbChange) change {
-	out := change{Path: c.Path.ToString, Type: c.Type}
-	if c.SrcPath != nil && c.SrcPath.ToString != c.Path.ToString {
-		out.SrcPath = c.SrcPath.ToString
+	out := change{Path: string(c.Path), Type: c.Type}
+	if c.SrcPath != nil && *c.SrcPath != c.Path {
+		out.SrcPath = string(*c.SrcPath)
 	}
 	return out
 }

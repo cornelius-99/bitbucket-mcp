@@ -145,6 +145,20 @@ func TestChangesCompact(t *testing.T) {
 	}
 }
 
+func TestPathAcceptsStringOrObject(t *testing.T) {
+	for in, want := range map[string]string{
+		`"src/a.go"`:                          "src/a.go",
+		`{"toString":"src/a.go"}`:             "src/a.go",
+		`{"components":["src","a.go"]}`:       "src/a.go",
+		`{"components":["x"],"toString":"y"}`: "y",
+	} {
+		var p bbPath
+		if err := json.Unmarshal([]byte(in), &p); err != nil || string(p) != want {
+			t.Errorf("%s: got %q, %v; want %q", in, p, err, want)
+		}
+	}
+}
+
 func TestUserName(t *testing.T) {
 	for _, tc := range []struct {
 		u    bbUser
