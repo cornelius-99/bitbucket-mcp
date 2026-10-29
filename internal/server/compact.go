@@ -11,32 +11,36 @@ import (
 
 // Bitbucket's JSON repeats full user, repository and project objects (with
 // links) on every item, so most of a raw response is noise to a model. Read
-// tools therefore decode the fields that matter into the compact types below
-// and return those, unless the caller passes raw: true.
+// resources and write tools therefore decode the fields that matter into the
+// compact types below and return those, unless the caller asks for raw output.
 
-// RawArgs lets a caller ask for Bitbucket's unmodified response.
-type RawArgs struct {
-	Raw bool `json:"raw,omitempty" jsonschema:"Return Bitbucket's full, unmodified JSON instead of the compact summary"`
-}
-
-// compactResult decodes body as In and returns conv's result as JSON, or body
+// compactJSON decodes body as In and returns conv's result as JSON, or body
 // itself when raw is set.
-func compactResult[In, Out any](body []byte, raw bool, conv func(In) Out) (*mcp.CallToolResult, error) {
+func compactJSON[In, Out any](body []byte, raw bool, conv func(In) Out) (string, error) {
 	if raw || len(bytes.TrimSpace(body)) == 0 {
-		return jsonResult(body), nil
+		return string(body), nil
 	}
 	var in In
 	if err := json.Unmarshal(body, &in); err != nil {
 		// Not the expected shape (or truncated): better the raw body than nothing.
-		return jsonResult(body), nil
+		return string(body), nil
 	}
 	var buf bytes.Buffer
 	enc := json.NewEncoder(&buf)
 	enc.SetEscapeHTML(false) // keep <, > and & in descriptions and comments readable
 	if err := enc.Encode(conv(in)); err != nil {
+		return "", err
+	}
+	return strings.TrimSuffix(buf.String(), "\n"), nil
+}
+
+// compactResult is compactJSON wrapped as tool output.
+func compactResult[In, Out any](body []byte, conv func(In) Out) (*mcp.CallToolResult, error) {
+	s, err := compactJSON(body, false, conv)
+	if err != nil {
 		return nil, err
 	}
-	return textResult(strings.TrimSuffix(buf.String(), "\n")), nil
+	return textResult(s), nil
 }
 
 // ---- Bitbucket JSON, only the fields that are kept ----
@@ -379,7 +383,7 @@ func toPullRequest(p bbPullRequest) pullRequest {
 }
 
 // toPullRequestSummary is toPullRequest for lists: the description and
-// participants are left to get_pull_request.
+// participants are left to the single pull request resource.
 func toPullRequestSummary(p bbPullRequest) pullRequest {
 	out := toPullRequest(p)
 	out.Description = ""

@@ -27,11 +27,28 @@ An [MCP](https://modelcontextprotocol.io) server for the **Bitbucket Data Center
 | `merge_pull_request` | Merge, optionally with a strategy or auto-merge |
 
 Tools that take a `version` use the PR's current version when it is omitted.
-Start with `-read-only` (or `BITBUCKET_READ_ONLY=true`) to expose only the read tools.
+Start with `-read-only` (or `BITBUCKET_READ_ONLY=true`) to expose only the read tools and resources.
+
+### Resources
+
+Every read tool is also a [resource template](https://modelcontextprotocol.io/specification/latest/server/resources), so clients that support resources can attach a PR, its diff and so on as context. URIs mirror Bitbucket's web URLs; `PR` below is `bitbucket://projects/{project_key}/repos/{repository_slug}/pull-requests/{pull_request_id}`.
+
+| Resource | Same as |
+| --- | --- |
+| `bitbucket://projects/{project_key}/repos/{repository_slug}/pull-requests` | `list_pull_requests` |
+| `bitbucket://dashboard/pull-requests` | `list_my_pull_requests` |
+| `PR` | `get_pull_request` |
+| `PR/diff` | `get_pull_request_diff` |
+| `PR/changes` | `get_pull_request_changes` |
+| `PR/commits` | `get_pull_request_commits` |
+| `PR/activities` | `get_pull_request_activities` |
+| `PR/merge-status` | `get_pull_request_merge_status` |
+
+The tool's optional arguments go in the query string, percent-encoded, e.g. `bitbucket://projects/PRJ/repos/repo/pull-requests?state=MERGED&at=refs%2Fheads%2Fmain`. An empty value (`limit=`) means unset, and a bare boolean (`?raw`) means true.
 
 ### Output
 
-Bitbucket's raw JSON repeats full user, repository and project objects (with links) on every item, so the tools return compact summaries instead: users as `slug (Display Name)`, refs as branch plus commit, times as RFC 3339, and no links, emails or clone URLs. List results leave out PR descriptions; `get_pull_request` has them. This cuts typical responses by about 65–85% (one page of 25 PRs drops from roughly 28k to 5k tokens). Pass `raw: true` to any read tool to get Bitbucket's unmodified JSON.
+Bitbucket's raw JSON repeats full user, repository and project objects (with links) on every item, so the tools and resources return compact summaries instead: users as `slug (Display Name)`, refs as branch plus commit, times as RFC 3339, and no links, emails or clone URLs. List results leave out PR descriptions; `get_pull_request` has them. This cuts typical responses by about 65–85% (one page of 25 PRs drops from roughly 28k to 5k tokens). Pass `raw: true` to any read tool (`raw=true` on a JSON resource) to get Bitbucket's unmodified JSON.
 
 ## Configuration
 
@@ -39,7 +56,7 @@ Bitbucket's raw JSON repeats full user, repository and project objects (with lin
 | --- | --- | --- |
 | `BITBUCKET_URL` | yes | Base URL of your instance, e.g. `https://bitbucket.example.com` (include any context path) |
 | `BITBUCKET_TOKEN` | yes | HTTP access token. Create one under *Manage account → HTTP access tokens*; it needs at least *Repository read* (and *Repository write* for the write tools). |
-| `BITBUCKET_READ_ONLY` | no | `true` to register only read tools |
+| `BITBUCKET_READ_ONLY` | no | `true` to register only the read tools and resources |
 
 ## Install
 

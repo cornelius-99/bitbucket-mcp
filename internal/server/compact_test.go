@@ -26,9 +26,9 @@ const testPR = `{"id":7,"version":3,"title":"Add x","description":"Adds <x> & y"
 func TestGetPullRequestCompact(t *testing.T) {
 	_, cs := setup(t, map[string]string{"GET " + prPath: testPR}, Options{})
 
-	out, isErr := call(t, cs, "get_pull_request", prArgs(nil))
-	if isErr {
-		t.Fatalf("unexpected error: %s", out)
+	out, err := read(t, cs, testPRURI)
+	if err != nil {
+		t.Fatal(err)
 	}
 	var got pullRequest
 	if err := json.Unmarshal([]byte(out), &got); err != nil {
@@ -63,9 +63,9 @@ func TestGetPullRequestCompact(t *testing.T) {
 func TestRawReturnsBitbucketJSON(t *testing.T) {
 	_, cs := setup(t, map[string]string{"GET " + prPath: testPR}, Options{})
 
-	out, isErr := call(t, cs, "get_pull_request", prArgs(map[string]any{"raw": true}))
-	if isErr || out != testPR {
-		t.Errorf("raw output = %s (error %v)", out, isErr)
+	out, err := read(t, cs, testPRURI+"?raw=true")
+	if err != nil || out != testPR {
+		t.Errorf("raw output = %s (error %v)", out, err)
 	}
 }
 
@@ -74,7 +74,7 @@ func TestListPullRequestsOmitsDescription(t *testing.T) {
 		"GET /rest/api/latest/projects/PRJ/repos/repo/pull-requests": `{"size":1,"limit":25,"start":0,"isLastPage":false,"nextPageStart":1,"values":[` + testPR + `]}`,
 	}, Options{})
 
-	out, _ := call(t, cs, "list_pull_requests", map[string]any{"project_key": "PRJ", "repository_slug": "repo"})
+	out, _ := read(t, cs, "bitbucket://projects/PRJ/repos/repo/pull-requests")
 	var got page[pullRequest]
 	if err := json.Unmarshal([]byte(out), &got); err != nil {
 		t.Fatalf("output is not JSON: %s", out)
@@ -106,9 +106,9 @@ func TestActivitiesCompact(t *testing.T) {
 		]}`,
 	}, Options{})
 
-	out, isErr := call(t, cs, "get_pull_request_activities", prArgs(nil))
-	if isErr {
-		t.Fatalf("unexpected error: %s", out)
+	out, err := read(t, cs, testPRURI+"/activities")
+	if err != nil {
+		t.Fatal(err)
 	}
 	var got page[activity]
 	if err := json.Unmarshal([]byte(out), &got); err != nil {
@@ -139,7 +139,7 @@ func TestChangesCompact(t *testing.T) {
 			 "srcPath":{"toString":"src/a.go"},"type":"MOVE","nodeType":"FILE","links":{"self":[null]}}]}`,
 	}, Options{})
 
-	out, _ := call(t, cs, "get_pull_request_changes", prArgs(nil))
+	out, _ := read(t, cs, testPRURI+"/changes")
 	if want := `{"values":[{"path":"src/b.go","srcPath":"src/a.go","type":"MOVE"}],"isLastPage":true}`; out != want {
 		t.Errorf("output = %s\nwant     %s", out, want)
 	}
