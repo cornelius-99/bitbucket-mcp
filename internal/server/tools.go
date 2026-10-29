@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"net/http"
 	"strconv"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -25,43 +24,6 @@ type PRArgs struct {
 }
 
 func (a PRArgs) id() string { return strconv.FormatInt(a.PullRequestID, 10) }
-
-// PageArgs are Bitbucket's standard paging parameters.
-type PageArgs struct {
-	Start int `json:"start,omitempty" jsonschema:"Index of the first item to return (from nextPageStart of the previous page)"`
-	Limit int `json:"limit,omitempty" jsonschema:"Maximum number of items to return (Bitbucket default 25)"`
-}
-
-func (p PageArgs) start() *float32 { return optNum(p.Start) }
-func (p PageArgs) limit() *float32 { return optNum(p.Limit) }
-
-func optNum(n int) *float32 {
-	if n == 0 {
-		return nil
-	}
-	f := float32(n)
-	return &f
-}
-
-func optStr(s string) *string {
-	if s == "" {
-		return nil
-	}
-	return &s
-}
-
-func optBool(b *bool) *string {
-	if b == nil {
-		return nil
-	}
-	s := strconv.FormatBool(*b)
-	return &s
-}
-
-// jsonResult wraps a raw Bitbucket JSON body as tool output.
-func jsonResult(body []byte) *mcp.CallToolResult {
-	return textResult(string(body))
-}
 
 func textResult(s string) *mcp.CallToolResult {
 	return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: s}}}
@@ -101,62 +63,9 @@ func (t *tools) resolveVersion(ctx context.Context, a PRArgs, v *int32) (int32, 
 	return t.currentVersion(ctx, a)
 }
 
-// register adds all tools to s. Write tools are skipped when readOnly is set.
-func (t *tools) register(s *mcp.Server, readOnly bool) {
-	read := &mcp.ToolAnnotations{ReadOnlyHint: true, OpenWorldHint: new(true)}
-
-	mcp.AddTool(s, &mcp.Tool{
-		Name:        "list_pull_requests",
-		Description: "List pull requests in a repository. Returns a page (values, isLastPage, nextPageStart) of PR summaries without descriptions; use get_pull_request for the full PR.",
-		Annotations: read,
-	}, t.listPullRequests)
-
-	mcp.AddTool(s, &mcp.Tool{
-		Name:        "list_my_pull_requests",
-		Description: "List pull requests across all repositories that involve the authenticated user (the Bitbucket dashboard). Returns PR summaries without descriptions.",
-		Annotations: read,
-	}, t.listMyPullRequests)
-
-	mcp.AddTool(s, &mcp.Tool{
-		Name:        "get_pull_request",
-		Description: "Get a pull request, including its title, description, branches, reviewers, state and version.",
-		Annotations: read,
-	}, t.getPullRequest)
-
-	mcp.AddTool(s, &mcp.Tool{
-		Name:        "get_pull_request_diff",
-		Description: "Get the unified diff of a pull request as plain text. Output over 1 MiB is truncated.",
-		Annotations: read,
-	}, t.getPullRequestDiff)
-
-	mcp.AddTool(s, &mcp.Tool{
-		Name:        "get_pull_request_changes",
-		Description: "List the files changed by a pull request.",
-		Annotations: read,
-	}, t.getPullRequestChanges)
-
-	mcp.AddTool(s, &mcp.Tool{
-		Name:        "get_pull_request_commits",
-		Description: "List the commits of a pull request.",
-		Annotations: read,
-	}, t.getPullRequestCommits)
-
-	mcp.AddTool(s, &mcp.Tool{
-		Name:        "get_pull_request_activities",
-		Description: "List the activity of a pull request, newest first: comments (with replies), approvals, reviews, rescopes, merges and declines.",
-		Annotations: read,
-	}, t.getPullRequestActivities)
-
-	mcp.AddTool(s, &mcp.Tool{
-		Name:        "get_pull_request_merge_status",
-		Description: "Check whether a pull request can be merged, and list any vetoes (e.g. missing approvals, failing builds, conflicts).",
-		Annotations: read,
-	}, t.getPullRequestMergeStatus)
-
-	if readOnly {
-		return
-	}
-
+// register adds the tools that change state in Bitbucket to s. Read tools are
+// registered with their resources; see resources.go.
+func (t *tools) register(s *mcp.Server) {
 	write := &mcp.ToolAnnotations{OpenWorldHint: new(true), DestructiveHint: new(false)}
 	idempotent := &mcp.ToolAnnotations{OpenWorldHint: new(true), DestructiveHint: new(false), IdempotentHint: true}
 	destructive := &mcp.ToolAnnotations{OpenWorldHint: new(true), DestructiveHint: new(true)}
@@ -215,162 +124,6 @@ func (t *tools) register(s *mcp.Server, readOnly bool) {
 		Annotations: destructive,
 	}, t.mergePullRequest)
 }
-
-// ---- read tools ----
-
-type ListPullRequestsArgs struct {
-	RepoArgs
-	PageArgs
-	RawArgs
-	State      string `json:"state,omitempty" jsonschema:"OPEN (default), DECLINED, MERGED or ALL"`
-	Direction  string `json:"direction,omitempty" jsonschema:"INCOMING (default, PRs targeting this repo) or OUTGOING (PRs from this repo)"`
-	At         string `json:"at,omitempty" jsonschema:"Only PRs to (INCOMING) or from (OUTGOING) this fully qualified ref, e.g. refs/heads/main"`
-	Order      string `json:"order,omitempty" jsonschema:"OLDEST or NEWEST (default)"`
-	FilterText string `json:"filter_text,omitempty" jsonschema:"Only PRs whose title or description contains this text"`
-	Draft      *bool  `json:"draft,omitempty" jsonschema:"true for only drafts, false for only non-drafts; omit for both"`
-}
-
-func (t *tools) listPullRequests(ctx context.Context, _ *mcp.CallToolRequest, a ListPullRequestsArgs) (*mcp.CallToolResult, any, error) {
-	body, err := readBody(t.c.GetPage(ctx, a.ProjectKey, a.RepositorySlug, &bitbucket.GetPageParams{
-		State:      optStr(a.State),
-		Direction:  optStr(a.Direction),
-		At:         optStr(a.At),
-		Order:      optStr(a.Order),
-		FilterText: optStr(a.FilterText),
-		Draft:      optBool(a.Draft),
-		Start:      a.start(),
-		Limit:      a.limit(),
-	}))
-	if err != nil {
-		return nil, nil, err
-	}
-	res, err := compactResult(body, a.Raw, compactPage(toPullRequestSummary))
-	return res, nil, err
-}
-
-type ListMyPullRequestsArgs struct {
-	PageArgs
-	RawArgs
-	Role              string `json:"role,omitempty" jsonschema:"Only PRs where the user has this role: AUTHOR, REVIEWER or PARTICIPANT"`
-	State             string `json:"state,omitempty" jsonschema:"OPEN, DECLINED or MERGED; omit for any state"`
-	ParticipantStatus string `json:"participant_status,omitempty" jsonschema:"Comma separated participant statuses: UNAPPROVED, NEEDS_WORK, APPROVED"`
-	Order             string `json:"order,omitempty" jsonschema:"OLDEST, NEWEST (default), DRAFT_STATUS, PARTICIPANT_STATUS or CLOSED_DATE"`
-}
-
-func (t *tools) listMyPullRequests(ctx context.Context, _ *mcp.CallToolRequest, a ListMyPullRequestsArgs) (*mcp.CallToolResult, any, error) {
-	body, err := readBody(t.c.GetPullRequests1(ctx, &bitbucket.GetPullRequests1Params{
-		Role:              optStr(a.Role),
-		State:             optStr(a.State),
-		ParticipantStatus: optStr(a.ParticipantStatus),
-		Order:             optStr(a.Order),
-		Start:             a.start(),
-		Limit:             a.limit(),
-	}))
-	if err != nil {
-		return nil, nil, err
-	}
-	res, err := compactResult(body, a.Raw, compactPage(toPullRequestSummary))
-	return res, nil, err
-}
-
-type GetPullRequestArgs struct {
-	PRArgs
-	RawArgs
-}
-
-func (t *tools) getPullRequest(ctx context.Context, _ *mcp.CallToolRequest, a GetPullRequestArgs) (*mcp.CallToolResult, any, error) {
-	body, err := readBody(t.c.Get3(ctx, a.ProjectKey, a.RepositorySlug, a.id()))
-	if err != nil {
-		return nil, nil, err
-	}
-	res, err := compactResult(body, a.Raw, toPullRequest)
-	return res, nil, err
-}
-
-type GetDiffArgs struct {
-	PRArgs
-	ContextLines int    `json:"context_lines,omitempty" jsonschema:"Lines of context around each change (Bitbucket default 10)"`
-	Whitespace   string `json:"whitespace,omitempty" jsonschema:"Set to ignore-all to ignore whitespace changes"`
-}
-
-func (t *tools) getPullRequestDiff(ctx context.Context, _ *mcp.CallToolRequest, a GetDiffArgs) (*mcp.CallToolResult, any, error) {
-	params := &bitbucket.StreamRawDiff2Params{Whitespace: optStr(a.Whitespace)}
-	if a.ContextLines > 0 {
-		params.ContextLines = optStr(strconv.Itoa(a.ContextLines))
-	}
-	body, err := readBody(t.c.StreamRawDiff2(ctx, a.ProjectKey, a.RepositorySlug, a.id(), params, acceptText))
-	if err != nil {
-		return nil, nil, err
-	}
-	if len(body) == 0 {
-		return textResult("(empty diff)"), nil, nil
-	}
-	return textResult(string(body)), nil, nil
-}
-
-type GetChangesArgs struct {
-	PRArgs
-	PageArgs
-	RawArgs
-	ChangeScope string `json:"change_scope,omitempty" jsonschema:"ALL (default), UNREVIEWED (changes since the user's last review) or RANGE (use since_id and until_id)"`
-	SinceID     string `json:"since_id,omitempty" jsonschema:"With change_scope RANGE: the commit to diff from"`
-	UntilID     string `json:"until_id,omitempty" jsonschema:"With change_scope RANGE: the commit to diff to"`
-}
-
-func (t *tools) getPullRequestChanges(ctx context.Context, _ *mcp.CallToolRequest, a GetChangesArgs) (*mcp.CallToolResult, any, error) {
-	body, err := readBody(t.c.StreamChanges1(ctx, a.ProjectKey, a.RepositorySlug, a.id(), &bitbucket.StreamChanges1Params{
-		ChangeScope: optStr(a.ChangeScope),
-		SinceId:     optStr(a.SinceID),
-		UntilId:     optStr(a.UntilID),
-		Start:       a.start(),
-		Limit:       a.limit(),
-	}))
-	if err != nil {
-		return nil, nil, err
-	}
-	res, err := compactResult(body, a.Raw, compactPage(toChange))
-	return res, nil, err
-}
-
-type PagedPRArgs struct {
-	PRArgs
-	PageArgs
-	RawArgs
-}
-
-func (t *tools) getPullRequestCommits(ctx context.Context, _ *mcp.CallToolRequest, a PagedPRArgs) (*mcp.CallToolResult, any, error) {
-	body, err := readBody(t.c.GetCommits1(ctx, a.ProjectKey, a.RepositorySlug, a.id(), &bitbucket.GetCommits1Params{
-		Start: a.start(),
-		Limit: a.limit(),
-	}))
-	if err != nil {
-		return nil, nil, err
-	}
-	res, err := compactResult(body, a.Raw, compactPage(toCommit))
-	return res, nil, err
-}
-
-func (t *tools) getPullRequestActivities(ctx context.Context, _ *mcp.CallToolRequest, a PagedPRArgs) (*mcp.CallToolResult, any, error) {
-	body, err := readBody(t.c.GetActivities(ctx, a.ProjectKey, a.RepositorySlug, a.id(), &bitbucket.GetActivitiesParams{
-		Start: a.start(),
-		Limit: a.limit(),
-	}))
-	if err != nil {
-		return nil, nil, err
-	}
-	res, err := compactResult(body, a.Raw, compactPage(toActivity))
-	return res, nil, err
-}
-
-func (t *tools) getPullRequestMergeStatus(ctx context.Context, _ *mcp.CallToolRequest, a PRArgs) (*mcp.CallToolResult, any, error) {
-	body, err := readBody(t.c.CanMerge(ctx, a.ProjectKey, a.RepositorySlug, a.id()))
-	if err != nil {
-		return nil, nil, err
-	}
-	return jsonResult(body), nil, nil
-}
-
-// ---- write tools ----
 
 type refJSON struct {
 	ID         string    `json:"id"`
@@ -448,7 +201,7 @@ func (t *tools) createPullRequest(ctx context.Context, _ *mcp.CallToolRequest, a
 	if err != nil {
 		return nil, nil, err
 	}
-	res, err := compactResult(body, false, toPullRequest)
+	res, err := compactResult(body, toPullRequest)
 	return res, nil, err
 }
 
@@ -527,7 +280,7 @@ func (t *tools) updatePullRequest(ctx context.Context, _ *mcp.CallToolRequest, a
 	if err != nil {
 		return nil, nil, err
 	}
-	res, err := compactResult(body, false, toPullRequest)
+	res, err := compactResult(body, toPullRequest)
 	return res, nil, err
 }
 
@@ -579,7 +332,7 @@ func (t *tools) addPullRequestComment(ctx context.Context, _ *mcp.CallToolReques
 	if err != nil {
 		return nil, nil, err
 	}
-	res, err := compactResult(body, false, toComment)
+	res, err := compactResult(body, toComment)
 	return res, nil, err
 }
 
@@ -588,7 +341,7 @@ func (t *tools) approvePullRequest(ctx context.Context, _ *mcp.CallToolRequest, 
 	if err != nil {
 		return nil, nil, err
 	}
-	res, err := compactResult(body, false, toParticipant)
+	res, err := compactResult(body, toParticipant)
 	return res, nil, err
 }
 
@@ -597,7 +350,7 @@ func (t *tools) unapprovePullRequest(ctx context.Context, _ *mcp.CallToolRequest
 	if err != nil {
 		return nil, nil, err
 	}
-	res, err := compactResult(body, false, toParticipant)
+	res, err := compactResult(body, toParticipant)
 	return res, nil, err
 }
 
@@ -615,7 +368,7 @@ func (t *tools) setReviewStatus(ctx context.Context, _ *mcp.CallToolRequest, a S
 	if err != nil {
 		return nil, nil, err
 	}
-	res, err := compactResult(body, false, toParticipant)
+	res, err := compactResult(body, toParticipant)
 	return res, nil, err
 }
 
@@ -636,7 +389,7 @@ func (t *tools) declinePullRequest(ctx context.Context, _ *mcp.CallToolRequest, 
 	if err != nil {
 		return nil, nil, err
 	}
-	res, err := compactResult(body, false, toPullRequest)
+	res, err := compactResult(body, toPullRequest)
 	return res, nil, err
 }
 
@@ -656,7 +409,7 @@ func (t *tools) reopenPullRequest(ctx context.Context, _ *mcp.CallToolRequest, a
 	if err != nil {
 		return nil, nil, err
 	}
-	res, err := compactResult(body, false, toPullRequest)
+	res, err := compactResult(body, toPullRequest)
 	return res, nil, err
 }
 
@@ -685,12 +438,6 @@ func (t *tools) mergePullRequest(ctx context.Context, _ *mcp.CallToolRequest, a 
 	if err != nil {
 		return nil, nil, err
 	}
-	res, err := compactResult(body, false, toPullRequest)
+	res, err := compactResult(body, toPullRequest)
 	return res, nil, err
-}
-
-// acceptText asks for a plain-text response, used for raw diffs.
-func acceptText(_ context.Context, req *http.Request) error {
-	req.Header.Set("Accept", "text/plain")
-	return nil
 }

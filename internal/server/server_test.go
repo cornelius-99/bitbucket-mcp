@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"maps"
 	"net/http"
@@ -11,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/modelcontextprotocol/go-sdk/jsonrpc"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -103,6 +105,21 @@ func call(t *testing.T, cs *mcp.ClientSession, name string, args map[string]any)
 	return sb.String(), res.IsError
 }
 
+// read reads a resource and returns its text, or the error message.
+func read(t *testing.T, cs *mcp.ClientSession, uri string) (string, error) {
+	t.Helper()
+	res, err := cs.ReadResource(context.Background(), &mcp.ReadResourceParams{URI: uri})
+	if err != nil {
+		return err.Error(), err
+	}
+	if len(res.Contents) != 1 || res.Contents[0].URI != uri {
+		t.Fatalf("%s: contents = %+v", uri, res.Contents)
+	}
+	return res.Contents[0].Text, nil
+}
+
+const testPRURI = "bitbucket://projects/PRJ/repos/repo/pull-requests/7"
+
 const prPath = "/rest/api/latest/projects/PRJ/repos/repo/pull-requests/7"
 
 func prArgs(extra map[string]any) map[string]any {
@@ -121,27 +138,87 @@ func TestListTools(t *testing.T) {
 	for _, tool := range res.Tools {
 		names = append(names, tool.Name)
 	}
-	for _, want := range []string{"list_pull_requests", "get_pull_request", "merge_pull_request", "add_pull_request_comment"} {
+	for _, want := range []string{"create_pull_request", "merge_pull_request", "add_pull_request_comment"} {
 		if !slices.Contains(names, want) {
 			t.Errorf("tool %q missing from %v", want, names)
 		}
 	}
 }
 
-func TestReadOnlyHidesWriteTools(t *testing.T) {
+func TestListResourceTemplates(t *testing.T) {
+	_, cs := setup(t, nil, Options{ReadOnly: true})
+	res, err := cs.ListResourceTemplates(context.Background(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var names []string
+	for _, rt := range res.ResourceTemplates {
+		names = append(names, rt.Name)
+	}
+	for _, want := range []string{"pull_requests", "my_pull_requests", "pull_request", "pull_request_diff",
+		"pull_request_changes", "pull_request_commits", "pull_request_activities", "pull_request_merge_status"} {
+		if !slices.Contains(names, want) {
+			t.Errorf("resource template %q missing from %v", want, names)
+		}
+	}
+}
+
+func TestReadOnlyHasOnlyReadTools(t *testing.T) {
 	_, cs := setup(t, nil, Options{ReadOnly: true})
 	res, err := cs.ListTools(context.Background(), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
+	var names []string
 	for _, tool := range res.Tools {
+		names = append(names, tool.Name)
 		if tool.Annotations == nil || !tool.Annotations.ReadOnlyHint {
-			t.Errorf("read-only server exposes write tool %q", tool.Name)
+			t.Errorf("tool %q is not read-only", tool.Name)
 		}
 	}
-	if len(res.Tools) == 0 {
-		t.Error("no tools registered")
+	for _, want := range []string{"list_pull_requests", "get_pull_request", "get_pull_request_merge_status"} {
+		if !slices.Contains(names, want) {
+			t.Errorf("tool %q missing from %v", want, names)
+		}
 	}
+	if caps := cs.InitializeResult().Capabilities; caps.Resources == nil {
+		t.Errorf("capabilities = %+v", caps)
+	}
+}
+
+func TestReadTool(t *testing.T) {
+	fake, cs := setup(t, map[string]string{
+		"GET " + prPath + "/merge": `{"canMerge":false,"vetoes":[{"summaryMessage":"Needs approval"}]}`,
+	}, Options{})
+
+	out, isErr := call(t, cs, "get_pull_request_merge_status", prArgs(nil))
+	if isErr || !strings.Contains(out, "Needs approval") {
+		t.Fatalf("output = %s (error %v)", out, isErr)
+	}
+	if req := fake.last(); req.Method != "GET" || req.Path != prPath+"/merge" {
+		t.Errorf("request = %+v", req)
+	}
+}
+
+func TestResourceTemplateDocumentsQuery(t *testing.T) {
+	_, cs := setup(t, nil, Options{})
+	res, err := cs.ListResourceTemplates(context.Background(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, rt := range res.ResourceTemplates {
+		if rt.Name != "pull_requests" {
+			continue
+		}
+		if !strings.HasSuffix(rt.URITemplate, "/pull-requests{?state,direction,at,order,filter_text,draft,start,limit,raw}") {
+			t.Errorf("URI template = %s", rt.URITemplate)
+		}
+		if !strings.Contains(rt.Description, "state: OPEN (default), DECLINED, MERGED or ALL.") {
+			t.Errorf("description = %s", rt.Description)
+		}
+		return
+	}
+	t.Error("pull_requests template missing")
 }
 
 func TestListPullRequests(t *testing.T) {
@@ -149,11 +226,9 @@ func TestListPullRequests(t *testing.T) {
 		"GET /rest/api/latest/projects/PRJ/repos/repo/pull-requests": `{"values":[{"id":7}],"isLastPage":true}`,
 	}, Options{})
 
-	out, isErr := call(t, cs, "list_pull_requests", map[string]any{
-		"project_key": "PRJ", "repository_slug": "repo", "state": "MERGED", "limit": 5,
-	})
-	if isErr {
-		t.Fatalf("unexpected error: %s", out)
+	out, err := read(t, cs, "bitbucket://projects/PRJ/repos/repo/pull-requests?limit=5&state=MERGED")
+	if err != nil {
+		t.Fatal(err)
 	}
 	if !strings.Contains(out, `"id":7`) {
 		t.Errorf("output = %s", out)
@@ -172,23 +247,110 @@ func TestGetPullRequestDiffAsksForText(t *testing.T) {
 		"GET " + prPath + ".diff": "diff --git a/x b/x\n",
 	}, Options{})
 
-	out, isErr := call(t, cs, "get_pull_request_diff", prArgs(nil))
-	if isErr || !strings.HasPrefix(out, "diff --git") {
-		t.Fatalf("output = %q (error %v)", out, isErr)
+	out, err := read(t, cs, testPRURI+"/diff?context_lines=3")
+	if err != nil || !strings.HasPrefix(out, "diff --git") {
+		t.Fatalf("output = %q (error %v)", out, err)
 	}
-	if got := fake.last().Accept; got != "text/plain" {
-		t.Errorf("Accept = %q", got)
+	req := fake.last()
+	if req.Accept != "text/plain" {
+		t.Errorf("Accept = %q", req.Accept)
+	}
+	if req.Query != "contextLines=3" {
+		t.Errorf("query = %q", req.Query)
 	}
 }
 
-func TestAPIErrorIsToolError(t *testing.T) {
+func TestAPIErrorIsResourceError(t *testing.T) {
 	_, cs := setup(t, nil, Options{})
-	out, isErr := call(t, cs, "get_pull_request", prArgs(nil))
-	if !isErr {
-		t.Fatalf("expected tool error, got %s", out)
+	out, err := read(t, cs, testPRURI)
+	if err == nil {
+		t.Fatalf("expected error, got %s", out)
 	}
 	if !strings.Contains(out, "404") || !strings.Contains(out, "not found") {
 		t.Errorf("error = %s", out)
+	}
+}
+
+func TestResourceRejectsBadParameters(t *testing.T) {
+	fake, cs := setup(t, nil, Options{})
+	for _, uri := range []string{
+		"bitbucket://projects/PRJ/repos/repo/pull-requests/x",
+		"bitbucket://projects/PRJ/repos/repo/branches",
+	} {
+		if out, err := read(t, cs, uri); err == nil {
+			t.Errorf("%s: expected error, got %s", uri, out)
+		}
+	}
+	for _, uri := range []string{
+		testPRURI + "?raw=maybe",
+		testPRURI + "/commits?limit=ten",
+		testPRURI + "/commits?bogus=1",
+		testPRURI + "/commits?limit",
+		testPRURI + "/commits?limit=5&limit=10",
+		testPRURI + "?project_key=OTHER",
+		"bitbucket://projects//repos/repo/pull-requests",
+	} {
+		_, err := read(t, cs, uri)
+		if werr, ok := errors.AsType[*jsonrpc.Error](err); !ok || werr.Code != jsonrpc.CodeInvalidParams {
+			t.Errorf("%s: error = %v, want invalid params", uri, err)
+		}
+	}
+	if len(fake.requests) != 0 {
+		t.Errorf("bad URIs reached Bitbucket: %+v", fake.requests)
+	}
+}
+
+func TestResourceTreatsEmptyValuesAsUnset(t *testing.T) {
+	fake, cs := setup(t, map[string]string{
+		"GET /rest/api/latest/projects/PRJ/repos/repo/pull-requests": `{"values":[],"isLastPage":true}`,
+	}, Options{})
+
+	// What a client sends when it expands the template with blank fields.
+	if out, err := read(t, cs, "bitbucket://projects/PRJ/repos/repo/pull-requests?state=MERGED&draft=&start=&limit=&raw="); err != nil {
+		t.Fatal(out)
+	}
+	if q := fake.last().Query; q != "state=MERGED" {
+		t.Errorf("query = %q", q)
+	}
+}
+
+func TestResourceBareFlag(t *testing.T) {
+	_, cs := setup(t, map[string]string{
+		"GET " + prPath:            testPR,
+		"GET " + prPath + "/merge": `{"canMerge":true}`,
+	}, Options{})
+
+	if out, err := read(t, cs, testPRURI+"?raw"); err != nil || out != testPR {
+		t.Errorf("raw output = %s (error %v)", out, err)
+	}
+	if out, err := read(t, cs, testPRURI+"/merge-status?raw=true"); err != nil || out != `{"canMerge":true}` {
+		t.Errorf("merge status output = %s (error %v)", out, err)
+	}
+}
+
+func TestDiffZeroContextLines(t *testing.T) {
+	fake, cs := setup(t, map[string]string{
+		"GET " + prPath + ".diff": "diff --git a/x b/x\n",
+	}, Options{})
+
+	if out, err := read(t, cs, testPRURI+"/diff?context_lines=0"); err != nil {
+		t.Fatal(out)
+	}
+	if q := fake.last().Query; q != "contextLines=0" {
+		t.Errorf("query = %q", q)
+	}
+}
+
+func TestResourceDecodesPercentEncoding(t *testing.T) {
+	fake, cs := setup(t, map[string]string{
+		"GET /rest/api/latest/projects/~bob/repos/repo/pull-requests": `{"values":[],"isLastPage":true}`,
+	}, Options{})
+
+	if out, err := read(t, cs, "bitbucket://projects/%7Ebob/repos/repo/pull-requests?at=refs%2Fheads%2Fmain"); err != nil {
+		t.Fatalf("%s", out)
+	}
+	if q := fake.last().Query; q != "at=refs%2Fheads%2Fmain" {
+		t.Errorf("query = %q", q)
 	}
 }
 
