@@ -146,6 +146,14 @@ func (r *reads) register(s *mcp.Server) {
 		Description: "Whether a pull request can be merged, and any vetoes (e.g. missing approvals, failing builds, conflicts).",
 		MIMEType:    mimeJSON,
 	}, r.mergeStatus)
+
+	addRead(s, "get_pull_request_description_template", &mcp.ResourceTemplate{
+		Name:        "pull_request_description_template",
+		Title:       "Pull request description template",
+		URITemplate: repoURI + "/pull-request-template",
+		Description: "The description template that Bitbucket fills in when a pull request is created in a repository (set under repository or project settings). Use it as the starting point for a new pull request's description. The template only applies when enabled is true. This is Bitbucket's internal UI endpoint (Data Center only), not part of the public REST API.",
+		MIMEType:    mimeJSON,
+	}, r.descriptionTemplate)
 }
 
 // addRead registers read as a read-only tool named tool and as the resource
@@ -443,6 +451,21 @@ func (r *reads) activities(ctx context.Context, a PagedPRArgs) (string, error) {
 // status is already compact, so it is always returned unmodified.
 func (r *reads) mergeStatus(ctx context.Context, a GetPullRequestArgs) (string, error) {
 	body, err := readBody(r.c.CanMerge(ctx, a.ProjectKey, a.RepositorySlug, a.id()))
+	if err != nil {
+		return "", err
+	}
+	return string(body), nil
+}
+
+// descriptionTemplate reads the repository's pull request description
+// template. Bitbucket has no public REST endpoint for it; this is the one its
+// web UI uses, which also accepts a PUT of {"description": "...", "enabled":
+// true} to change the template. Its response is small, so it is returned
+// unmodified.
+func (r *reads) descriptionTemplate(ctx context.Context, a RepoArgs) (string, error) {
+	path := "ui/latest/projects/" + url.PathEscape(a.ProjectKey) +
+		"/repos/" + url.PathEscape(a.RepositorySlug) + "/pull-request-templates"
+	body, err := readBody(get(ctx, r.c, path))
 	if err != nil {
 		return "", err
 	}
