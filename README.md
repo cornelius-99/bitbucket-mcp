@@ -18,6 +18,7 @@ An [MCP](https://modelcontextprotocol.io) server for the **Bitbucket Data Center
 | `get_pull_request_commits` | Commits in the PR |
 | `get_pull_request_activities` | Comments, approvals, rescopes, merges |
 | `get_pull_request_merge_status` | Whether it can merge, and any vetoes |
+| `get_pull_request_description_template` | The repository's PR description template, to start a new PR's description from (see below) |
 | `create_pull_request` | Open a PR (supports forks, reviewers, drafts) |
 | `update_pull_request` | Change title, description, target, reviewers, draft; unspecified fields are kept |
 | `add_pull_request_comment` | General, reply, inline (file/line) comment, or task (`severity: BLOCKER`) |
@@ -27,6 +28,8 @@ An [MCP](https://modelcontextprotocol.io) server for the **Bitbucket Data Center
 | `merge_pull_request` | Merge, optionally with a strategy or auto-merge |
 
 Tools that take a `version` use the PR's current version when it is omitted.
+
+`get_pull_request_description_template` reads the *Description template* set under the repository's or project's pull request settings. Bitbucket has no public REST API for it, so the tool calls the endpoint the web UI uses, `GET /rest/ui/latest/projects/{project_key}/repos/{repository_slug}/pull-request-templates`, and returns its JSON unmodified (`description`, and `enabled`, which says whether the template is in use). The feature is Data Center only, and because the endpoint is internal, it may change between Bitbucket versions.
 Start with `-read-only` (or `BITBUCKET_READ_ONLY=true`) to expose only the read tools and resources.
 
 ### Resources
@@ -43,6 +46,7 @@ Every read tool is also a [resource template](https://modelcontextprotocol.io/sp
 | `PR/commits` | `get_pull_request_commits` |
 | `PR/activities` | `get_pull_request_activities` |
 | `PR/merge-status` | `get_pull_request_merge_status` |
+| `bitbucket://projects/{project_key}/repos/{repository_slug}/pull-request-template` | `get_pull_request_description_template` |
 
 The tool's optional arguments go in the query string, percent-encoded, e.g. `bitbucket://projects/PRJ/repos/repo/pull-requests?state=MERGED&at=refs%2Fheads%2Fmain`. An empty value (`limit=`) means unset, and a bare boolean (`?raw`) means true.
 

@@ -43,6 +43,22 @@ func NewClient(baseURL, token, userAgent string) (*bitbucket.Client, error) {
 	)
 }
 
+// get sends a GET to path, relative to the client's /rest base (for example
+// "ui/latest/..."), with the same authentication and headers as the
+// generated calls. It is for endpoints that are not in the OpenAPI spec.
+func get(ctx context.Context, c *bitbucket.Client, path string) (*http.Response, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.Server+path, nil)
+	if err != nil {
+		return nil, err
+	}
+	for _, edit := range c.RequestEditors {
+		if err := edit(ctx, req); err != nil {
+			return nil, err
+		}
+	}
+	return c.Client.Do(req)
+}
+
 // APIError is returned when Bitbucket answers with a non-2xx status.
 type APIError struct {
 	StatusCode int

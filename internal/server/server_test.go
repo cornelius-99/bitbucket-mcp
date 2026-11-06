@@ -156,7 +156,8 @@ func TestListResourceTemplates(t *testing.T) {
 		names = append(names, rt.Name)
 	}
 	for _, want := range []string{"pull_requests", "my_pull_requests", "pull_request", "pull_request_diff",
-		"pull_request_changes", "pull_request_commits", "pull_request_activities", "pull_request_merge_status"} {
+		"pull_request_changes", "pull_request_commits", "pull_request_activities", "pull_request_merge_status",
+		"pull_request_description_template"} {
 		if !slices.Contains(names, want) {
 			t.Errorf("resource template %q missing from %v", want, names)
 		}
@@ -438,5 +439,26 @@ func TestAddInlineComment(t *testing.T) {
 	anchor := fake.last().Body["anchor"].(map[string]any)
 	if anchor["path"] != "src/a.go" || anchor["line"] != float64(10) || anchor["fileType"] != "FROM" {
 		t.Errorf("anchor = %v", anchor)
+	}
+}
+
+func TestDescriptionTemplateUsesUIEndpoint(t *testing.T) {
+	const path = "/rest/ui/latest/projects/~jdoe/repos/repo/pull-request-templates"
+	fake, cs := setup(t, map[string]string{
+		"GET " + path: `{"description":"## What\n\n## Why","enabled":true}`,
+	}, Options{ReadOnly: true})
+
+	out, isErr := call(t, cs, "get_pull_request_description_template",
+		map[string]any{"project_key": "~jdoe", "repository_slug": "repo"})
+	if isErr || !strings.Contains(out, `"enabled":true`) {
+		t.Fatalf("output = %s (error %v)", out, isErr)
+	}
+	req := fake.last()
+	if req.Method != "GET" || req.Path != path || req.Auth != "Bearer secret-token" || req.Accept != "application/json" {
+		t.Errorf("request = %+v", req)
+	}
+
+	if out, err := read(t, cs, "bitbucket://projects/~jdoe/repos/repo/pull-request-template"); err != nil || !strings.Contains(out, "## What") {
+		t.Errorf("resource = %q (error %v)", out, err)
 	}
 }

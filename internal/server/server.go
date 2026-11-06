@@ -23,7 +23,8 @@ https://<host>/projects/<project_key>/repos/<repository_slug>. Every read tool i
 also a resource whose URI mirrors the web URL:
 bitbucket://projects/<project_key>/repos/<repository_slug>/pull-requests/<id>,
 with /diff, /changes, /commits, /activities and /merge-status below a pull request,
-and bitbucket://dashboard/pull-requests for your own. Resource parameters go in the
+/pull-request-template below a repository for the description template to start a
+new pull request from, and bitbucket://dashboard/pull-requests for your own. Resource parameters go in the
 query string, percent-encoded (e.g. ?at=refs%2Fheads%2Fmain&limit=10). List results
 are paged: pass nextPageStart as start to get the next page while isLastPage is false.
 Results are compact summaries: users are "slug (Display Name)" and times are
